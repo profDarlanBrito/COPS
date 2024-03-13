@@ -62,7 +62,7 @@ def main(dir, problem, results_file, save_img):
         # Create a new directory because it does not exist
         os.makedirs(img_path)
     img_saved = fr"{img_path}/{problem}"
-    cops.draw(path=solution["route"], legend=legend, fill_cluster=True, fill_set=True, name=img_saved, save_img=save_img)
+    #cops.draw(path=solution["route"], legend=legend, fill_cluster=True, fill_set=True, name=img_saved, save_img=save_img)
 
     f.write(
         f"\n{problem};"
