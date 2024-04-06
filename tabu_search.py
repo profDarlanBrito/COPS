@@ -40,7 +40,7 @@ def spreadsheet_header(results_file):
 def main(dir, problem, results_file, save_img):
     f = open(results_file, "a")
     """ Read the dataset """
-    dataset = fr"{dir}\{problem}.cops"
+    dataset = fr"{dir}/{problem}.cops"
     cops = COPS()
     cops.read_data(dataset)
 
@@ -80,7 +80,7 @@ def main(dir, problem, results_file, save_img):
 
 if __name__ == '__main__':
     # standart problem
-    dir = fr"{os.getcwd()}\datasets"
+    dir = fr"{os.getcwd()}/datasets"
     problem = "example_likeCOP"
 
     # Getting parsed problem
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     if args.path:
         dir = os.path.dirname(args.path)
         problem = os.path.basename(args.path).split('.')[0]
-    results_path = fr"{dir}\results"
+    results_path = fr"{dir}/results"
     # Getting argument to understand if its necessary to save img into img path
     save_img = True  # default true
     if args.save_img == 'False':
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     # result file
     if not os.path.exists(results_path):
         os.makedirs(results_path)
-    results_file = fr"{results_path}\{problem}.csv"
+    results_file = fr"{results_path}/{problem}.csv"
 
     # write spreadsheet header
     spreadsheet_header(results_file)
