@@ -394,7 +394,7 @@ class TabuSearchCOPS(COPS):
         my_print("------ Generated Neighborhoods ---------------")
         cont = 0
         #   while cont < 200:
-        while self.iterations_without_improvement < 300:
+        while self.iterations_without_improvement < 300 and cont < 200:
             self.generate_neighborhood()
             cont += 1
             if not self.cops.circular_path:
