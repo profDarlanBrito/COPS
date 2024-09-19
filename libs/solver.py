@@ -1,5 +1,7 @@
 import numpy as np
 import copy
+
+from config import parse_settings_file
 from libs.tsp import two_opt, path_distance_for_circular, path_distance_non_circular
 from libs.grafo import COPS
 from collections import OrderedDict
@@ -15,11 +17,14 @@ def my_print(msg, index_print=0):
 
 class TabuSearchCOPS(COPS):
     def __init__(self, cops_class):
-        self.tabu_alfa = 2
-        self.beta = 4
-        self.max_initial_solution_attempts = 10
+        super().__init__()
+        settings =  parse_settings_file("configCOPS.yaml")
+        self.tabu_alfa = settings["tabu alfa"]
+        self.beta = settings["beta"]
+        self.max_initial_solution_attempts = settings["max initial solution attempts"]
         self.iterations_without_improvement = 0
-        self.max_iterations_without_improvement = 10
+        self.max_iterations_without_improvement = settings["max iteration without improvements"]
+        self.absolute_max_iterations = settings["absolute max iterations"]
         self.iterations_to_change_final_set = 0
 
         self.cops = cops_class
@@ -33,7 +38,7 @@ class TabuSearchCOPS(COPS):
                    [1] -> if vertex is being visited (1 visited, 0 otherwise) 
                    [2] -> list of clusters who this vertex belongs it
         """
-        self.array_vertex = np.array([np.array([np.array(x), 0, []], dtype=object) for x in cops_class.list_vertex],
+        self.array_vertex = np.array([np.array([np.array(x), 0, np.zeros(1, dtype=int)], dtype=object) for x in cops_class.list_vertex],
                                      dtype=object)
 
         # SETS
@@ -52,23 +57,26 @@ class TabuSearchCOPS(COPS):
                    [5] -> 1 this cluster can be inserted in solution 0 otherwise
                    [6] -> index (profit / number_of_cluster)  
         """
+
         self.array_clusters = np.array(
-            [np.array([np.array(cops_class.list_subgroups[x]), [], 0, 0, 0, 1, self.array_profit[x] / len(cops_class.list_subgroups[x])], dtype=object) for x in range(len(cops_class.list_subgroups))], dtype=object)
+            [np.array([np.array(cops_class.list_subgroups[x]), np.zeros(1,dtype=int), 0, 0, 0, 1, self.array_profit[x] / len(cops_class.list_subgroups[x])], dtype=object) for x in range(len(cops_class.list_subgroups))], dtype=object)
         #my_print(f"array_cluster {self.array_clusters}", index_print=1)
         self.num_clusters = len(self.array_clusters)
         # Note that the same cluster can belong to more than one set.
         #            This loop says about each cluster which sets it belongs to.
         #            Ex: self.array_clusters[c][1] = [2,3] means that cluster c belongs to sets 2 and 3 """
+        #            The set is the subgroup of the configuration file
         for s in range(self.num_sets):
             for c in self.array_sets[s]:
-                self.array_clusters[c][1].append(s)
+                self.array_clusters[c][1][0] = s
                 # self.cluster_match_sets[c].append(s)
+
 
         # Note that the same vertex can belong to more than one set.
         #            This loop says about each vertex which clusters it belongs to.
         for c in range(self.num_clusters):
             for v in self.array_clusters[c][0]:
-                self.array_vertex[v][2].append(c)
+                self.array_vertex[v][2][0] = c
 
         self.start_set = cops_class.start_cluster
         self.end_set = cops_class.end_cluster
@@ -80,20 +88,18 @@ class TabuSearchCOPS(COPS):
                                 but each end cluster must contain only one cluster."""
         self.end_cluster = np.random.choice(self.array_sets[self.end_set])
         self.best_end_cluster = copy.deepcopy(self.end_cluster)
-        self.array_clusters[self.end_cluster][2] = 1  # long term memory (>=1 in solution)
+        self.array_clusters[self.end_cluster][2] = 1  # long-term memory (>=1 in solution)
 
         """ This dictionary contain:
             the clusters who belongs to any set except the start and end sets """
         # all_clusters contain all clusters except the clusters who belong only to the initial or final sets.
         # Note: the cluster who belong to initial or final sets could belong to another set
-        # (in this case this cluster will be in the all_clusters variable)
-        all_clusters = [c for s in range(self.num_sets) for c in self.array_sets[s] if
-                        s != self.start_set and s != self.end_set]
+        # (in this case, this cluster will be in the all_clusters variable)
+        all_clusters = [c for s in range(self.num_sets) for c in self.array_sets[s] if s != self.start_set and s != self.end_set]
         # the dictionary will eliminate the repeated clusters in all_clusters variable
         for c in all_clusters:
             self.array_clusters[c][3] = 1
-        self.clusters_que_podem_ser_atualizados = np.array(
-            [i for i in range(self.num_clusters) if self.array_clusters[i][3] == 1])
+        self.clusters_can_be_updated = np.array([i for i in range(self.num_clusters) if self.array_clusters[i][3] == 1])
 
         """ These variable indicates whether a cluster or set is being visited
             0 -> unvisited  1 -> visited"""
@@ -268,7 +274,7 @@ class TabuSearchCOPS(COPS):
         non_tabu_insertion = []
         tabu_insertion = []
 
-        for i in self.clusters_que_podem_ser_atualizados:
+        for i in self.clusters_can_be_updated:
             long_term_memory = self.array_clusters[i][2]
             # update the lists for remove
             if long_term_memory > 0:
@@ -394,7 +400,8 @@ class TabuSearchCOPS(COPS):
         my_print("------ Generated Neighborhoods ---------------")
         cont = 0
         #   while cont < 200:
-        while self.iterations_without_improvement < 300 and cont < 200:
+        # This loop needs to be improved
+        while self.iterations_without_improvement < self.max_iterations_without_improvement and cont < self.max_iterations_without_improvement:
             self.generate_neighborhood()
             cont += 1
             if not self.cops.circular_path:
@@ -426,7 +433,7 @@ class TabuSearchCOPS(COPS):
         early_stop = self.max_initial_solution_attempts
         while any(index_set) and early_stop > 0:
             s = np.random.choice(index_set)
-            #a = np.random.choice(self.array_sets[s])  # Chose randomly a cluster from set
+            #a = np.random.choice(self.array_sets[s]) #Randomly chose a cluster from a set
             indexMaxProfitPerNunCluster = np.argmax([self.array_clusters[c][6] for c in self.array_sets[s]])  # Chose the cluster from set with the highest profit
             a = self.array_sets[s][indexMaxProfitPerNunCluster]
             if self.array_clusters[a][5]:  # if this cluster can be inserted
@@ -522,9 +529,7 @@ class TabuSearchCOPS(COPS):
         return edges, d
 
     def choose_best_solution(self):
-        if self.solution["profit"] > self.best_solution["profit"] or \
-                (self.solution["profit"] == self.best_solution["profit"] and
-                 self.solution["distance"] < self.best_solution["distance"]):
+        if self.solution["profit"] > self.best_solution["profit"] or (self.solution["profit"] == self.best_solution["profit"] and self.solution["distance"] < self.best_solution["distance"]):
             self.best_solution = copy.deepcopy(self.solution)
             self.iterations_without_improvement = 0
             self.iterations_to_change_final_set = 0

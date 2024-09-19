@@ -40,22 +40,29 @@ class COPS:
         self.matrix_dist = self.list_vertex
 
     def euclidean_3D(self):
+        # Convert the list of vertices to a NumPy array once
+        vertices = np.array(self.list_vertex)
+        # Compute the pairwise distances using broadcasting
         for i in range(self.dimension - 1):
-            for j in range(i + 1, self.dimension):
-                a = np.array(self.list_vertex[i])
-                b = np.array(self.list_vertex[j])
-                dist = np.linalg.norm(a - b)
-                self.matrix_dist[i][j] = dist
-                self.matrix_dist[j][i] = dist
+            diffs = vertices[i] - vertices[i + 1:self.dimension]  # Differences between vertex i and all other vertices
+            dists = np.linalg.norm(diffs, axis=1)  # Compute the Euclidean distance
+
+            # Update the distance matrix for both [i][j] and [j][i]
+            self.matrix_dist[i, i + 1:self.dimension] = dists
+            self.matrix_dist[i + 1:self.dimension, i] = dists
+
 
     def euclidean_2D(self):
-        for i in range(self.dimension-1):
-            for j in range(i+1, self.dimension):
-                a = np.array(self.list_vertex[i])
-                b = np.array(self.list_vertex[j])
-                dist = np.linalg.norm(a-b)
-                self.matrix_dist[i][j] = dist
-                self.matrix_dist[j][i] = dist
+        # Convert the list of vertices to a NumPy array once
+        vertices = np.array(self.list_vertex)
+        # Compute the pairwise distances using broadcasting
+        for i in range(self.dimension - 1):
+            diffs = vertices[i] - vertices[i + 1:self.dimension]  # Differences between vertex i and all other vertices
+            dists = np.linalg.norm(diffs, axis=1)  # Compute the Euclidean distance
+
+            # Update the distance matrix for both [i][j] and [j][i]
+            self.matrix_dist[i, i + 1:self.dimension] = dists
+            self.matrix_dist[i + 1:self.dimension, i] = dists
 
     def draw(self, path=[], legend=[], fill_cluster=False, fill_set=False, name='saved', save_img=False):
         if self.edge_weight_type == 'CEIL_3D' or self.edge_weight_type == 'EUC_3D':
