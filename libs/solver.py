@@ -1,5 +1,11 @@
+from typing import List
+
 import numpy as np
 import copy
+
+from trimesh.grouping import clusters
+
+from config import parse_settings_file
 from libs.tsp import two_opt, path_distance_for_circular, path_distance_non_circular
 from libs.grafo import COPS
 from collections import OrderedDict
@@ -12,14 +18,172 @@ def my_print(msg, index_print=0):
     elif index_print == 2:
         print(msg)
 
+class Cluster:
+    """
+    Class container to clusters
+                [c] -> index of the cluster
+                [x] -> [0] -> Vertex list belonging to this cluster
+                       [1] -> list of sets who this cluster belongs it
+                       [2] -> LONG_TERM_MEMORY ( > 0 in solution) (<= 0 not in solution)
+                       [3] -> 0 if only belong to start or end sets
+                       [4] -> Aspiration level (the best profit obtained all times this cluster was in solution path)
+                       [5] -> 1 this cluster can be inserted in solution 0 otherwise
+                       [6] -> index (profit / number_of_cluster)
+    :ivar vertices_of_cluster: List of vertices belonging to this cluster
+    :ivar subgroups: List of subgroups that belongs to this cluster
+    :ivar long_term_memory: LONG_TERM_MEMORY ( > 0 in solution) (<= 0 not in solution)
+    :ivar belong_start_end: 0 if only belong to start or end sets
+    :ivar aspiration_level: Aspiration level (the best profit obtained all times this cluster was in solution path)
+    :ivar can_be_inserted: 1 this cluster can be inserted in solution 0 otherwise
+    :ivar index_profit: index (profit / number_of_cluster)
+    """
+    def __init__(self, list_vertex: list = None, list_subgroup: list = None, indexes_profit: list = None):
+        """
+        Initialize the class to store the cluster data
+        :param list_vertex: Vertex list belonging to this cluster
+        :param list_subgroup: list of sets who this cluster belongs it
+        :param indexes_profit: index (profit / number_of_cluster)
+        """
+        if list_vertex is not None:
+            self.vertices_of_cluster:list = list_vertex.copy()
+        else:
+            self.vertices_of_cluster:list = []
+        if list_subgroup is not None:
+            self.subgroups: list = list_subgroup.copy()
+        else:
+            self.subgroups: list = []
+        self.long_term_memory: int = 0
+        self.belong_start_end: bool = True
+        self.aspiration_level: float = 0.0
+        self.can_be_inserted: bool = True
+        if indexes_profit is not None:
+            self.index_profit: List[float] = indexes_profit
+        else:
+            self.index_profit: List[float] = []
+
+class Vertex:
+    """
+    Class container to vertex
+
+    :ivar position: [X, Y, Z] The position of the vertex
+    :ivar visited: if vertex is being visited (1 visited, 0 otherwise)
+    :ivar clusters_belongs: List of clusters who this vertex it belongs
+    """
+    def __init__(self, position: np.ndarray = np.empty(0), visited: bool = False, clusters_belongs: list = None):
+        """
+        Class initializer
+        :param position: [X, Y, Z] or [X, Y] The position of the vertex
+        :param visited: if vertex is being visited (1 visited, 0 otherwise)
+        :param clusters_belongs: List of clusters who this vertex it belongs
+        """
+        self.position: np.ndarray = position
+        self.visited: bool = visited
+        if clusters_belongs is not None:
+            self.clusters_belongs: list = clusters_belongs
+        else:
+            self.clusters_belongs: list = []
+
+class Subgroup:
+    def __init__(self,vertices_i: List[int] = None, clusters_i: List[int] = None):
+        if vertices_i is not None:
+            self.vertices_subgroup: List[int] = vertices_i.copy()
+        else:
+            self.vertices_subgroup: List[int] = []
+        if clusters_i is not None:
+            self.clusters_subgroup = clusters_i.copy()
+        else:
+            self.clusters_subgroup: List[int] = []
 
 class TabuSearchCOPS(COPS):
+
+    def __new_init__(self, cops_class):
+
+        array_profit = np.array(cops_class.profit)
+        matrix_dist = cops_class.matrix_dist
+
+        # VERTICES
+        vertices: list = [Vertex(np.array(x), False, []) for x in cops_class.list_vertex]
+
+        subgroups: List[Subgroup] = [Subgroup(vertices_i=x) for x in cops_class.list_subgroups]
+
+        clusters: List[Cluster] = [Cluster([], cops_class.list_clusters[x], []) for x in range(len(cops_class.list_clusters))]
+
+        num_subgroups = len(subgroups)
+
+        # CLUSTERS
+        num_clusters = len(clusters)
+        # Note that the same cluster can have more than one set.
+        #            This loop says about each cluster contain which sets.
+        #            Ex: self.array_clusters[c][1] = [2,3] means that cluster c contains sets 2 and 3 """
+
+        for c in range(num_clusters): #The subgroups are sequential then will not exist subgroup 10 without the nine groups before.Clusters are sequential too.
+            for v in clusters[c].subgroups:
+                clusters[c].vertices_of_cluster = subgroups[v].vertices_subgroup.copy()
+                subgroups[v].clusters_subgroup.append(c)
+
+        for c in range(num_clusters):
+            for s in clusters[c].subgroups:
+                clusters[c].index_profit.append(array_profit[s]/len(clusters[c].vertices_of_cluster))
+
+        # Note that the same vertex can belong to more than one set.
+        #            This loop says about each vertex which clusters it belongs to.
+        for c in range(num_clusters):
+            for v in clusters[c].vertices_of_cluster:
+                vertices[v].clusters_belongs.append(c)
+
+        start_cluster = cops_class.start_cluster
+        end_cluster = cops_class.end_cluster
+
+        clusters[start_cluster].long_term_memory = 1  # long-term memory (>=1 in solution)
+        clusters[start_cluster].belong_start_end = True
+
+        """ Note that: It's possible that end set contain more than one cluster who finishes the path,
+                                but each end cluster must contain only one cluster."""
+        end_subgroup = np.random.choice(clusters[end_cluster].subgroups)
+        best_end_subgroup = copy.deepcopy(end_subgroup)
+
+        clusters[end_cluster].long_term_memory = 1  # long-term memory (>=1 in solution)
+        clusters[end_cluster].belong_start_end = True
+
+        """ This dictionary contain:
+            the clusters who belongs to any set except the start and end sets """
+        # all_clusters contain all clusters except the clusters who belong only to the initial or final sets.
+        # Note: the cluster who belong to initial or final sets could belong to another set
+        # (in this case this cluster will be in the all_clusters variable)
+
+        all_clusters = [clusters[c] for c in range(num_clusters) if c != start_cluster and c != end_cluster]
+
+        clusters_can_not_be_updated = np.array([i for i in range(num_clusters) if clusters[i].belong_start_end])
+
+        """ These variable indicates whether a cluster or set is being visited
+            0 -> unvisited  1 -> visited"""
+        visited_subgroups = np.zeros(len(subgroups))
+        # self.vertex_visited = np.zeros(len(self.array_vertex))
+
+        self.solution = {"profit": 0,
+                         "distance": 0,
+                         "route": [],
+                         "subgroups_visited": [],
+                         # "sets_visited": [],
+                         }
+
+        self.best_solution = {"profit": 0,
+                              "distance": 0,
+                              "route": [],
+                              "subgroups_visited": [],
+                              # "sets_visited": [],
+                              }
+        return clusters, vertices, subgroups, start_cluster
+
     def __init__(self, cops_class):
-        self.tabu_alfa = 2
-        self.beta = 4
-        self.max_initial_solution_attempts = 10
+        super().__init__()
+        settings =  parse_settings_file("configCOPS.yaml")
+        self.tabu_alfa = settings["tabu alfa"]
+        self.beta = settings["beta"]
+        self.max_initial_solution_attempts = settings["max initial solution attempts"]
         self.iterations_without_improvement = 0
-        self.max_iterations_without_improvement = 10
+        self.max_iterations_without_improvement = settings["max iteration without improvements"]
+        self.absolute_max_iterations = settings["absolute max iterations"]
         self.iterations_to_change_final_set = 0
 
         self.cops = cops_class
@@ -33,8 +197,8 @@ class TabuSearchCOPS(COPS):
                    [1] -> if vertex is being visited (1 visited, 0 otherwise) 
                    [2] -> list of clusters who this vertex belongs it
         """
-        self.array_vertex = np.array([np.array([np.array(x), 0, []], dtype=object) for x in cops_class.list_vertex],
-                                     dtype=object)
+        self.array_vertex = np.array([np.array([np.array(x), 0, []], dtype=object) for x in cops_class.list_vertex], dtype=object)
+
 
         # SETS
         """  """
@@ -92,7 +256,7 @@ class TabuSearchCOPS(COPS):
         # the dictionary will eliminate the repeated clusters in all_clusters variable
         for c in all_clusters:
             self.array_clusters[c][3] = 1
-        self.clusters_que_podem_ser_atualizados = np.array(
+        self.clusters_can_be_updated = np.array(
             [i for i in range(self.num_clusters) if self.array_clusters[i][3] == 1])
 
         """ These variable indicates whether a cluster or set is being visited
@@ -257,6 +421,134 @@ class TabuSearchCOPS(COPS):
         #my_print(f"{chosen_cluster} - {self.array_clusters[index, 6]} - {self.array_clusters[index, 2]} - {criterion}", index_print=1)
         return chosen_cluster
 
+    def new_generate_neighborhood(self, clusters_gn: List[Cluster]):
+        need_a_neighborhood = True
+
+        visited_clusters = []
+        non_tabu_remove = []
+        old_visited = []
+
+        unvisited_clusters = []
+        non_tabu_insertion = []
+        tabu_insertion = []
+
+        for i in self.clusters_can_be_updated:
+            long_term_memory = clusters_gn[i].long_term_memory
+            # update the lists for remove
+            if long_term_memory > 0:
+                visited_clusters.append(i)
+                if long_term_memory > self.tabu_alfa:
+                    non_tabu_remove.append(i)
+                elif long_term_memory > self.beta:
+                    old_visited.append(i)
+            else:
+                """ it's a possible insertion if this cluster don't belong to a set who is in the solution """
+                a = clusters_gn[i].subgroups  # self.cluster_match_sets[i]
+                none_set_was_visited = True
+                for aa in a:
+                    if self.sets_visited[aa] == 1:
+                        none_set_was_visited = False
+                        break
+                # update the lists for insertion
+                if none_set_was_visited:
+                    unvisited_clusters.append(i)
+                    if long_term_memory < -self.tabu_alfa:
+                        non_tabu_insertion.append(i)
+                    else:
+                        tabu_insertion.append(i)
+
+        """ Non-Tabu Insertion """
+        if any(non_tabu_insertion):
+            """ Neighborhoods will be generated by a small modification of the current solution """
+            neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
+            chosen_cluster = np.random.choice(non_tabu_insertion)
+            #chosen_cluster = self.insertion_criterion(non_tabu_insertion)
+            #chosen_cluster = non_tabu_insertion[np.argmax([self.array_clusters[i][4] for i in non_tabu_insertion])]
+            neighborhood.append(chosen_cluster)
+            need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster)
+            if not need_a_neighborhood:
+                my_print(f"non_tabu_insertion {chosen_cluster} {non_tabu_insertion}")
+            else:
+                my_print(f"discarded Non-Tabu Insertion {chosen_cluster} {non_tabu_insertion}")
+
+        """ Old Removal """
+        if need_a_neighborhood:
+            if any(old_visited):
+                """ Neighborhoods will be generated by a small modification of the current solution """
+                neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
+                chosen_cluster = np.random.choice(old_visited)
+                neighborhood.remove(chosen_cluster)
+                need_a_neighborhood = self.removal_neighborhood(neighborhood, chosen_cluster)
+                if not need_a_neighborhood:
+                    my_print(f"old_Removal {chosen_cluster} {old_visited}")
+                else:
+                    my_print(f"discarded old_Removal {chosen_cluster} {old_visited}")
+
+        """ Tabu Insertion """
+        if need_a_neighborhood:
+            if any(tabu_insertion):
+                neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
+                #choose the cluster with the aspiration level criterion
+                #chosen_cluster = np.random.choice(tabu_insertion)
+                #chosen_cluster = self.insertion_criterion(tabu_insertion)
+                chosen_cluster = tabu_insertion[np.argmax([clusters_gn[i].aspiration_level for i in tabu_insertion])]
+                neighborhood.append(chosen_cluster)
+                need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster)
+                if not need_a_neighborhood:
+                    my_print(f"tabu_insertion {chosen_cluster} {tabu_insertion}")
+                else:
+                    my_print(f"discarded tabu_insertion {chosen_cluster} {tabu_insertion}")
+
+        """ Non-Tabu Removal """
+        if need_a_neighborhood:
+            if any(non_tabu_remove):
+                """ Neighborhoods will be generated by a small modification of the current solution """
+                neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
+                chosen_cluster = np.random.choice(non_tabu_remove)
+                neighborhood.remove(chosen_cluster)
+                need_a_neighborhood = self.removal_neighborhood(neighborhood, chosen_cluster)
+                if not need_a_neighborhood:
+                    my_print(f"Non-Tabu Removal {chosen_cluster} {non_tabu_remove}")
+                else:
+                    my_print(f"discarded Non-Tabu Removal {chosen_cluster} {non_tabu_remove}")
+
+        """ Random Removal """
+        if need_a_neighborhood:
+            if any(visited_clusters):
+                """ Neighborhoods will be generated by a small modification of the current solution """
+                neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
+                chosen_cluster = np.random.choice(visited_clusters)
+                neighborhood.remove(chosen_cluster)
+                need_a_neighborhood = self.removal_neighborhood(neighborhood, chosen_cluster)
+                if not need_a_neighborhood:
+                    my_print(f"Random Removal {chosen_cluster} {visited_clusters}")
+                else:
+                    my_print(f"discarded Random Removal {chosen_cluster} {visited_clusters}")
+
+        """ Random Insertion """
+        if need_a_neighborhood:
+            if any(unvisited_clusters):
+                """ Neighborhoods will be generated by a small modification of the current solution """
+                neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
+                chosen_cluster = np.random.choice(unvisited_clusters)
+                neighborhood.append(chosen_cluster)
+                need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster)
+                if not need_a_neighborhood:
+                    my_print(f"Random Insertion {chosen_cluster} {unvisited_clusters}")
+                else:
+                    my_print(f"discarded Random Insertion {chosen_cluster} {unvisited_clusters}")
+
+        if need_a_neighborhood:
+            for c in range(self.num_clusters):
+                long_term_memory = clusters_gn[c].long_term_memory
+                if long_term_memory > 0:
+                    long_term_memory += 1
+                else:
+                    long_term_memory -= 1
+        else:
+            self.choose_best_solution()
+
+
     def generate_neighborhood(self):
         need_a_neighborhood = True
 
@@ -268,7 +560,7 @@ class TabuSearchCOPS(COPS):
         non_tabu_insertion = []
         tabu_insertion = []
 
-        for i in self.clusters_que_podem_ser_atualizados:
+        for i in self.clusters_can_be_updated:
             long_term_memory = self.array_clusters[i][2]
             # update the lists for remove
             if long_term_memory > 0:
@@ -384,6 +676,30 @@ class TabuSearchCOPS(COPS):
         else:
             self.choose_best_solution()
 
+    def new_main(self, vertices_m:List[Vertex],clusters_m: List[Cluster], subgroups_m: List[Subgroup], start_cluster_m: int):
+        """ Compute an initial solution p0 """
+        my_print("------ Initial Solution ---------------")
+        self.all_new_initial_solution(vertices_m, clusters_m, subgroups_m, start_cluster_m)
+        my_print(f"solution {self.solution}")
+        self.choose_best_solution()
+
+        # my_print("------ Generated Neighborhoods ---------------")
+        cont = 0
+        while self.iterations_without_improvement < self.max_iterations_without_improvement and cont < self.absolute_max_iterations:
+            self.generate_neighborhood()
+            cont += 1
+            if not self.cops.circular_path:
+                if self.iterations_to_change_final_set > self.max_iterations_without_improvement:
+                    self.change_end_cluster()
+
+        """ add start end end to solution clusters_visited"""
+        self.best_solution["subgroups_visited"].insert(0, self.start_cluster)
+        # self.best_solution["subgroups_visited"].append([c for c in self.array_sets[self.end_cluster] if self.array_clusters[c][2] > 0][0])
+        self.best_solution["subgroups_visited"].append(self.best_end_cluster)
+        #########################################
+        return self.best_solution
+
+
     def main(self):
         """ Compute an initial solution p0 """
         my_print("------ Initial Solution ---------------")
@@ -407,6 +723,94 @@ class TabuSearchCOPS(COPS):
         self.best_solution["subgroups_visited"].append(self.best_end_cluster)
         #########################################
         return self.best_solution
+
+    def all_new_initial_solution(self, vertices_is: List[Vertex], clusters_is: List[Cluster], subgroups_is: List[Subgroup],
+                                 start_cluster: float):
+        t1 = time.time()
+        cv0 = []
+        sets_visited = []
+        # clusters_visited = []
+        """ Order randomly the subgroup array, without the initial and final sets """
+        index_clusters = [i for i in range(len(clusters_is)) if i != self.start_set and i != self.end_set]
+        np.random.shuffle(index_clusters)
+
+        sets_visited.append(self.start_set)
+        # clusters_visited.append(self.start_cluster)
+        profit = 0
+        tour = []
+        distance = 0
+        """ For each set chose a cluster and try to find a plausible path """
+        early_stop = self.max_initial_solution_attempts
+        while any(index_clusters) and early_stop > 0:
+            c = np.random.choice(index_clusters)
+            max_subgroup_profit_idx = np.argmax(clusters_is[c].index_profit)
+
+            choose_subgroup = clusters_is[c].subgroups[max_subgroup_profit_idx]  # Chose the cluster from set with the highest profit
+
+            if clusters_is[c].can_be_inserted:  # if this cluster can be inserted
+                cv0 = [start_cluster, choose_subgroup]
+
+                initial_tour, initial_distance = self.new_tour_generation(vertices_tg=vertices_is, clusters_tg=clusters_is, subgroup_tg=subgroups_is, cluster_tg=cv0)
+
+                """ test if the solution is plausible """
+                if initial_distance > self.cops.t_max:
+                    early_stop -= 1
+                    cv0.pop(-1)
+                    try:
+                        index_clusters.remove(c)
+                    except ValueError:
+                        pass
+                else:
+                    early_stop = self.max_initial_solution_attempts
+                    tour = initial_tour
+                    distance = initial_distance
+                    profit += self.array_profit[choose_subgroup]
+                    # clusters_visited.append(a)
+                    for visited in clusters_is[c].subgroups:  # list of sets who this cluster belongs it
+                        try:
+                            index_clusters.remove(visited)
+                            sets_visited.append(visited)
+                            for c in subgroups_is[visited].clusters_subgroup:
+                                clusters_is[c].can_be_inserted = False  # can't be visited
+                        except ValueError:
+                            pass
+                    my_print(f"clusters in solution {cv0} ")
+                # my_print("-------------")
+
+        """ For non_circular_path add the final cluster and set in their respective array """
+        if not self.cops.circular_path:
+            sets_visited.append(self.end_set)
+            # clusters_visited.append(self.end_cluster)
+
+        self.solution["route"] = tour
+        self.solution["subgroups_visited"] = cv0
+        # self.solution["subgroups_visited"].sort()
+        # self.solution["sets_visited"] = sets_visited
+        self.solution["distance"] = distance
+        self.solution["profit"] = profit
+
+        for i in cv0:
+            #self.array_clusters[i][2] = 1  # update LONG_TERM_MEMORY
+            clusters_is[i].long_term_memory = 1
+            #for v in self.array_clusters[i][0]:
+            for v in clusters_is[i].vertices_of_cluster:
+                vertices_is[v].visited = True  # indicates if a vertex is being visited
+        vertices_is[clusters_is[self.end_cluster].vertices_of_cluster[0]].visited = True  # all end and start cluster have only one vertex
+        vertices_is[clusters_is[self.start_cluster].vertices_of_cluster[0]].visited = True
+        self.sets_visited[[i for i in sets_visited]] = 1
+
+        """ update Aspiration level """
+        for c in self.solution["subgroups_visited"]:
+            if profit > clusters_is[c].index_profit:
+                clusters_is[c].index_profit = profit
+
+        my_print(f"LONG_TERM_MEMORY {[c.long_term_memory for c in clusters_is]}")
+        my_print(f"sets_visited {self.sets_visited}")
+        my_print(f"vertex_visited {[i.visited for i in vertices_is]}")
+
+        tempoExec = time.time() - t1
+        print("Runtime Init Solution: {} seconds".format(tempoExec))
+
 
     def initial_solution(self):
         t1 = time.time()
@@ -490,6 +894,42 @@ class TabuSearchCOPS(COPS):
 
         tempoExec = time.time() - t1
         print("Runtime Init Solution: {} seconds".format(tempoExec))
+
+    def new_tour_generation(self, vertices_tg: List[Vertex], clusters_tg: List[Cluster], cluster_tg:List[int], subgroup_tg:List[Subgroup], improvement_threshold=0.001):
+        """ tour is generated with 2-opt technic """
+
+        cv0 = cluster_tg.copy()
+
+        """ Note: the 2-opt solver needs a different treatment for a path that 
+                        ends at the same vertex it started """
+        if not self.cops.circular_path:
+            cv0.append(self.end_cluster)
+
+        """ select only wanted vertex """
+        #selected_index = [v for i in cv0 for v in self.array_clusters[i][0]]
+        selected_index = list(OrderedDict.fromkeys([v for i in cv0 for v in clusters_tg[i].subgroups]))  # will eliminate repeated elements
+        # selected_vertex = np.array([vertices_tg[i].position for i in subgroup_tg[g].vertices_subgroup for g in selected_index])
+        selected_vertex_l = []
+        index_vertices = []
+        for g in selected_index:
+            for i in subgroup_tg[g].vertices_subgroup:
+                selected_vertex_l.append(vertices_tg[i].position)
+                index_vertices.append(i)
+        selected_vertex = np.array(selected_vertex_l)
+        """ calc the route from two-opt algorithm """
+        route = two_opt(selected_vertex, improvement_threshold, is_a_circular_path=self.cops.circular_path)
+        real_route = [index_vertices[i] for i in route]  # the real route is mapped from route
+
+        """ define the edges from the found route """
+        edges = [(real_route[i], real_route[i + 1]) for i in range(len(real_route) - 1)]
+        if self.cops.circular_path:  # increase the last edge for a circular path
+            edges.append((real_route[-1], real_route[0]))
+        distance = path_distance_for_circular(route, selected_vertex)  # only for conference
+        """ calculate the path distance from edge distances matrix """
+        d = sum([self.matrix_dist[edge[0]][edge[1]] for edge in edges])
+
+        return edges, d
+
 
     def tour_generation(self, clusters, improvement_threshold=0.001):
         """ tour is generated with 2-opt technic """

@@ -15,10 +15,10 @@ def two_opt(cities, improvement_threshold, is_a_circular_path=True):  # 2-opt Al
     improvement_factor = 1  # Initialize the improvement factor.
 
     if is_a_circular_path:
-        aux = 0  # first point will be the start and the end
+        aux = 0  # The first point will be the start and the end
         path_distance = path_distance_for_circular
     else:
-        aux = 1  # first point will be the start and the last point is the end
+        aux = 1  #The first point will be the start and the last point is the end
         path_distance = path_distance_non_circular
     best_distance = path_distance(route, cities)  # Calculate the distance of the initial path.
     while improvement_factor > improvement_threshold:  # If the route is still improving, keep going!
