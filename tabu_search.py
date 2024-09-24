@@ -47,8 +47,6 @@ def main(dir, problem, results_file, save_img):
     print("------TabuSearchCOPS-------")
     t1 = time.time()
     tbs = TabuSearchCOPS(cops)
-    clusters, vertices, subgroups, start_cluster = tbs.__new_init__(cops)
-    tbs.new_main(vertices, clusters, subgroups, start_cluster)
     solution = tbs.main()
 
     tempoExec = time.time() - t1
