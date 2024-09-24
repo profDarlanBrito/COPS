@@ -3,6 +3,8 @@ from typing import List
 import numpy as np
 import copy
 
+from anaconda_navigator.api.external_apps.validation_utils import catch_exception
+
 from config import parse_settings_file
 from libs.tsp import two_opt, path_distance_for_circular
 from libs.grafo import COPS
@@ -95,6 +97,7 @@ class Subgroup:
 class TabuSearchCOPS(COPS):
     """
     General COPS class
+    :ivar settings: Store all settings to the configuration parameters
     :ivar tabu_alpha: Minimum value to the long-term memory value to include the subgroup to be removed of the solution
     :ivar beta: Minimum value to consider a point be considered to be randomly removed.
     :ivar max_initial_solution_attempts: Maximum attempts to generate an initial solution without improvements.
@@ -104,11 +107,11 @@ class TabuSearchCOPS(COPS):
     :ivar array_profit: Array of profit to each subgroup
     :ivar matrix_dist: Matrix distance of node i to j
     :ivar vertices: List of vertices. Each element of vertices is an instance of the Vertex class.
-    :ivar subgroups: List of subgroups. Each element is an instance of Subgroup class
-    :ivar clusters: List of clusters. Each element is an instance of Cluster class
-    :ivar visited_subgroups: List of indexes for the subgroups in the list of subgroups in the solution list.
+    :ivar subgroups: Subgroups list. Each element is an instance of Subgroup class
+    :ivar clusters: Clusters list. Each element is an instance of Cluster class
+    :ivar visited_subgroups: Indexes list for the subgroups in the list of subgroups in the solution list.
     :ivar clusters_can_be_updated: List of clusters that do not belong to start or end vertex
-    :ivar solution: Dictionary with the solution subgoups, profit, and vertices
+    :ivar solution: Dictionary with the solution subgroups, profit, and vertices
     :ivar best_solution: Dictionary with the best solution.
     :ivar start_cluster: The cluster that starts the path. The start cluster is configured in the .cops file.
     :ivar end_cluster: The cluster that ends the path. The end cluster is configured in the .cops file.
@@ -118,15 +121,19 @@ class TabuSearchCOPS(COPS):
     :ivar best_end_cluster: The cluster of the end for the path with better profit
     """
     def __init__(self, cops_class):
+        """
+        Initialization function
+        :param cops_class: Class with COPS data read from .cops file
+        """
 
         super().__init__()
-        settings =  parse_settings_file("configCOPS.yaml")
-        self.tabu_alpha: float = settings["tabu alfa"]
-        self.beta: float = settings["beta"]
-        self.max_initial_solution_attempts: int = settings["max initial solution attempts"]
+        self.settings = parse_settings_file("configCOPS.yaml")
+        self.tabu_alpha: float = self.settings["tabu alfa"]
+        self.beta: float = self.settings["beta"]
+        self.max_initial_solution_attempts: int = self.settings["max initial solution attempts"]
         self.iterations_without_improvement: int = 0
-        self.max_iterations_without_improvement: int = settings["max iteration without improvements"]
-        self.absolute_max_iterations: int = settings["absolute max iterations"]
+        self.max_iterations_without_improvement: int = self.settings["max iteration without improvements"]
+        self.absolute_max_iterations: int = self.settings["absolute max iterations"]
         self.iterations_to_change_final_set: int = 0
 
         self.cops: cops_class = cops_class
@@ -152,13 +159,13 @@ class TabuSearchCOPS(COPS):
         #            Ex: self.array_clusters[c][1] = [2,3] means that cluster c contains sets 2 and 3 """
         for c in range(self.num_clusters): #The subgroups are sequential then will not exist subgroup 10 without the nine groups before.Clusters are sequential too.
             for v in self.clusters[c].subgroups:
-                self.clusters[c].vertices_of_cluster = self.subgroups[v].vertices_subgroup.copy()
+                self.clusters[c].vertices_of_cluster.extend(self.subgroups[v].vertices_subgroup.copy())
                 self.subgroups[v].clusters_subgroup.append(c)
 
         # Compute the profit to each subgroup of each cluster. One cluster is a list of subgroups the profit index stores the normalized profit to each subgroup of the cluster
         for c in range(self.num_clusters):
             for s in self.clusters[c].subgroups:
-                self.clusters[c].index_profit.append(self.array_profit[s]/len(self.clusters[c].vertices_of_cluster))
+                self.clusters[c].index_profit.extend([self.array_profit[s]/len(self.clusters[c].vertices_of_cluster)])
 
         # Note that the same vertex can belong to more than one subgroup.
         #            This loop says about each vertex belongs to which clusters.
@@ -316,7 +323,15 @@ class TabuSearchCOPS(COPS):
     #                           # "sets_visited": [],
     #                           }
 
-    def insertion_neighborhood(self, neighbor, inserted_cluster):
+    def insertion_neighborhood(self, neighbor, inserted_cluster, inserted_subgroup):
+        """
+        Insert a new cluster to the path of the solution. a) Non-Tabu Insertion: Choose randomly from S_client a subgroup that is not in the tabu list and that does not belong to a cluster that is in the current
+        solution P, and insert it into the neighbor P′.
+        :param inserted_subgroup:
+        :param neighbor: Set of subgroups of the computed path until now
+        :param inserted_cluster: Cluster to be inserted in the neighbor
+        :return: Need to update the solution
+        """
         need_a_solution = True
 
         n_tour, n_distance = self.tour_generation(neighbor)
@@ -326,19 +341,19 @@ class TabuSearchCOPS(COPS):
             """ verify if this neighborhood has the best profit or
                 if the neighborhood has the same profit but less distance 
                 NOTE: It will choose better paths when the profit is equal and the distance is less """
-            n_profit = self.solution["profit"] + self.array_profit[inserted_cluster]
+            n_profit = self.solution["profit"] + self.array_profit[inserted_subgroup]
 
             if n_profit > self.solution["profit"] or (
                     n_profit == self.solution["profit"] and n_distance < self.solution["distance"]):
 
                 """ update solution """
-                self.solution["subgroups_visited"].append(inserted_cluster)
+                self.solution["subgroups_visited"].append(inserted_subgroup)
                 self.solution["route"] = n_tour
                 self.solution["distance"] = n_distance
                 self.solution["profit"] = n_profit
 
-                """ update sets visited"""
-                for s in self.clusters[inserted_cluster].subgroups:  # self.cluster_match_sets[rand_cluster]:
+                """ update subgroups visited"""
+                for s in self.subgroups[inserted_subgroup].clusters_subgroup:  # self.cluster_match_sets[rand_cluster]:
                     self.visited_subgroups[s] = 1
 
                 """ update long_term_memory """
@@ -354,15 +369,22 @@ class TabuSearchCOPS(COPS):
                     self.vertices[v].visited = 1
 
                 """ update Aspiration level """
-                for c in self.solution["subgroups_visited"]:
-                    if n_profit > self.clusters[c].index_profit:
-                        self.clusters[c].index_profit = n_profit
+                for s in self.solution["subgroups_visited"]:
+                    for c in self.subgroups[s].clusters_subgroup:
+                        profit_idx = self.clusters[c].subgroups.index(s)
+                        if n_profit > self.clusters[c].index_profit[profit_idx]:
+                            self.clusters[c].index_profit[profit_idx] = n_profit
 
                 need_a_solution = False
                 my_print(f"CHANGE THE SOLUTION NEIGHBORHOOD {self.solution}")
         return need_a_solution
 
     def tour_update_remove_cluster(self, removed_cluster):
+        """
+        Remove the cluster deleting relations of the cluster
+        :param removed_cluster: Cluster to be removed
+        :return:
+        """
         n_tour = []
         n_distance = 0
 
@@ -412,6 +434,12 @@ class TabuSearchCOPS(COPS):
         return n_tour, n_distance
 
     def removal_neighborhood(self, neighbor, removed_cluster):
+        """
+        The removal of a subgroup which implies the removal of the cluster to the subgroup belongs by just removing their vertices from the solution and join its predecessor to the successor.
+        :param neighbor: Subgroup list that will be removed the subgroup
+        :param removed_cluster: The cluster that has the subgroup that will be removed
+        :return:
+        """
         #need_a_solution = True
 
         #n_tour, n_distance = self.tour_generation(neighbor)
@@ -420,19 +448,26 @@ class TabuSearchCOPS(COPS):
         """ verify if this neighborhood is feasible """
         #if n_distance < self.cops.t_max:
         """ update the aspiration level"""
-        self.clusters[removed_cluster].index_profit = self.solution["profit"]
+        for i in range(len(self.clusters[removed_cluster].index_profit)):
+            self.clusters[removed_cluster].index_profit[i] = self.solution["profit"]
 
         #n_profit = self.solution["profit"] - self.array_profit[removed_cluster]
+
+
+
+        """ update subgroups visited"""
+        for s in self.clusters[removed_cluster].subgroups:  # self.cluster_match_sets[rand_cluster]:
+            self.visited_subgroups[s] = 0
+            self.solution["profit"] -= self.array_profit[s]
+            try:
+                neighbor.remove(s)
+            except:
+                pass
 
         """ update solution """
         self.solution["subgroups_visited"] = neighbor  # .remove(removed_cluster)
         self.solution["route"] = n_tour
         self.solution["distance"] = n_distance
-        self.solution["profit"] -= self.array_profit[removed_cluster]
-
-        """ update sets visited"""
-        for s in self.clusters[removed_cluster].subgroups:  # self.cluster_match_sets[rand_cluster]:
-            self.visited_subgroups[s] = 0
 
         """ update long_term_memory """
         for c in range(self.num_clusters):
@@ -460,6 +495,28 @@ class TabuSearchCOPS(COPS):
         return chosen_cluster
 
     def generate_neighborhood(self):
+        """
+        Each iteration will generate a group of neighbors of the current solution P in a predefined sequence. In order to avoid solving many TSP instances and then choose the best move, the first plausible
+        solution found should be considered as the neighbor P′ for each iteration. Next, this neighbor should be compared with the final solution P∗. The final solution will be exchanged for this neighbor
+        if it is more profitable as the final solution or has the same reward but with a lower traversal cost. Note that it will choose more efficient paths when the reward is the same but the cost is lower.
+        The rules to produce the neighbors follow two lines: (i) an insertion of some feasible subgroup in the current solution; or (ii) a removal of a subgroup from the solution. The insertion is made by solving
+        the classic local search strategy 2-opt [16] for all chosen vertices. The removal of a subgroup is further time optimized by just removing their vertices from the solution and join its predecessor to the
+        successor. However, it is necessary to take care not to remove a vertex which is shared by any other subgroup in the current solution P. Neighbors are generated in the following sequence:
+        a) Non-Tabu Insertion: Choose randomly from S_client a subgroup that is not in the tabu list and that does not belong to a cluster that is in the current solution P, and insert it into the neighbor P′.
+        b) Old Removal: Remove from P a randomly chosen subgroup from Sclient for which ηi > β, where β is a constant.
+        c) Tabu Insertion: Insert a subgroup from tabu insert list that does not belong to some cluster served in the current solution. The chosen subgroup is the one with the highest aspiration level.
+        Similar to [2], the aspiration level is the highest reward value obtained on any solution that contained this subgroup.
+        d) Random Insertion: Randomly chose and insert any subgroup from Sclient that does not belong to some cluster served in the current solution.
+        e) Non-Tabu Removal: Remove from P a randomly chosen subgroup from Sclient that is non-tabu to remove.
+        f) Random Removal: Chose randomly a client subgroup from the current solution and remove it.
+        5) Non-circular paths: If the starting point differs from the ending point of the path, then there will be an end cluster, and all end subgroups must contain only one vertex, and the solver will choose
+        which subgroup will be the end depot. In this case, the endpoint will be changed after T iterations without improvement. For this, we choose the subgroup with the minimum long-term memory, that is, the
+        subgroup that has been outside the solution for the longest time. T is defined as β divided by the number of final subgroups. The idea is that the neighborhoods of all endpoints will be tested before the
+        end of the run.
+        6) Stop condition: The algorithm stops after β iterations without increasing the reward of the final solution, or decreasing the distance traveled, keeping the same reward. The value of β obtained after
+        preliminary tests was 300.
+        :return:
+        """
         need_a_neighborhood = True
 
         visited_clusters = []
@@ -475,13 +532,13 @@ class TabuSearchCOPS(COPS):
             # update the lists for remove
             if long_term_memory > 0:
                 visited_clusters.append(i)
-                if long_term_memory > self.tabu_alpha:
+                if long_term_memory > self.tabu_alpha: #Tabu list: A subgroup will be a tabu (forbidden) to insert or remove if, respectively, ηi > −α and ηi < α ,where α is the tabu constant.
                     non_tabu_remove.append(i)
-                elif long_term_memory > self.beta:
+                elif long_term_memory > self.beta: #Old Removal: Remove from P a randomly chosen subgroup from S_client for which long-term memory > β ,where β is a constant.
                     old_visited.append(i)
             else:
-                """ it's a possible insertion if this cluster don't belong to a set who is in the solution """
-                a = self.clusters[i].subgroups  # self.cluster_match_sets[i]
+                """ it's a possible insertion if this cluster don't belong to a subgroup in the solution """
+                a = self.clusters[i].subgroups  #
                 none_set_was_visited = True
                 for aa in a:
                     if self.visited_subgroups[aa] == 1:
@@ -500,10 +557,9 @@ class TabuSearchCOPS(COPS):
             """ Neighborhoods will be generated by a small modification of the current solution """
             neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
             chosen_cluster = np.random.choice(non_tabu_insertion)
-            #chosen_cluster = self.insertion_criterion(non_tabu_insertion)
-            #chosen_cluster = non_tabu_insertion[np.argmax([self.array_clusters[i][4] for i in non_tabu_insertion])]
-            neighborhood.append(chosen_cluster)
-            need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster)
+            chosen_subgroup = np.random.choice(self.clusters[chosen_cluster].subgroups)
+            neighborhood.append(chosen_subgroup)
+            need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster, chosen_subgroup)
             if not need_a_neighborhood:
                 my_print(f"non_tabu_insertion {chosen_cluster} {non_tabu_insertion}")
             else:
@@ -515,7 +571,6 @@ class TabuSearchCOPS(COPS):
                 """ Neighborhoods will be generated by a small modification of the current solution """
                 neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
                 chosen_cluster = np.random.choice(old_visited)
-                neighborhood.remove(chosen_cluster)
                 need_a_neighborhood = self.removal_neighborhood(neighborhood, chosen_cluster)
                 if not need_a_neighborhood:
                     my_print(f"old_Removal {chosen_cluster} {old_visited}")
@@ -526,12 +581,10 @@ class TabuSearchCOPS(COPS):
         if need_a_neighborhood:
             if any(tabu_insertion):
                 neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
-                #choose the cluster with the aspiration level criterion
-                #chosen_cluster = np.random.choice(tabu_insertion)
-                #chosen_cluster = self.insertion_criterion(tabu_insertion)
                 chosen_cluster = tabu_insertion[np.argmax([self.clusters[i].aspiration_level for i in tabu_insertion])]
-                neighborhood.append(chosen_cluster)
-                need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster)
+                chosen_subgroup = np.random.choice(self.clusters[chosen_cluster].subgroups)
+                neighborhood.append(chosen_subgroup)
+                need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster, chosen_subgroup)
                 if not need_a_neighborhood:
                     my_print(f"tabu_insertion {chosen_cluster} {tabu_insertion}")
                 else:
@@ -543,7 +596,7 @@ class TabuSearchCOPS(COPS):
                 """ Neighborhoods will be generated by a small modification of the current solution """
                 neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
                 chosen_cluster = np.random.choice(non_tabu_remove)
-                neighborhood.remove(chosen_cluster)
+                # neighborhood.remove(chosen_cluster)
                 need_a_neighborhood = self.removal_neighborhood(neighborhood, chosen_cluster)
                 if not need_a_neighborhood:
                     my_print(f"Non-Tabu Removal {chosen_cluster} {non_tabu_remove}")
@@ -556,7 +609,6 @@ class TabuSearchCOPS(COPS):
                 """ Neighborhoods will be generated by a small modification of the current solution """
                 neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
                 chosen_cluster = np.random.choice(visited_clusters)
-                neighborhood.remove(chosen_cluster)
                 need_a_neighborhood = self.removal_neighborhood(neighborhood, chosen_cluster)
                 if not need_a_neighborhood:
                     my_print(f"Random Removal {chosen_cluster} {visited_clusters}")
@@ -570,7 +622,9 @@ class TabuSearchCOPS(COPS):
                 neighborhood = copy.deepcopy(self.solution["subgroups_visited"])
                 chosen_cluster = np.random.choice(unvisited_clusters)
                 neighborhood.append(chosen_cluster)
-                need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster)
+                chosen_subgroup = np.random.choice(self.clusters[chosen_cluster].subgroups)
+                neighborhood.append(chosen_subgroup)
+                need_a_neighborhood = self.insertion_neighborhood(neighborhood, chosen_cluster, chosen_subgroup)
                 if not need_a_neighborhood:
                     my_print(f"Random Insertion {chosen_cluster} {unvisited_clusters}")
                 else:
@@ -763,36 +817,46 @@ class TabuSearchCOPS(COPS):
     #     return self.best_solution
 
     def initial_solution(self):
+        """
+        Generate an initial solution.Initial solution p0: For the initial solution p0, we randomly choose one cluster at a time,and for each cluster,we select the subgroup with the highest profitability level.
+        The profitability level is defined here as the profit achieved by visiting the subgroup divided by the number of vertices of this subgroup. Then, this subgroup is inserted into p0, and a new tour is
+        generated using the 2-opt strategy [16]. The procedure stops when all clusters have been considered or the tour surpasses the budget for Λ consecutive iterations.
+        :return:
+        """
         t1 = time.time()
-        cv0 = [self.start_cluster]
-        sets_visited = []
+        p0 = [self.start_cluster]
+        visited_subgroups = []
         # clusters_visited = []
-        """ Order randomly the subgroup array, without the initial and final sets """
+        """ Order randomly the cluster array, without the initial and final cluster """
         index_clusters = [i for i in range(len(self.clusters)) if i != self.start_cluster and i != self.end_cluster]
         np.random.shuffle(index_clusters)
 
-        sets_visited.append(self.start_subgroup)
+        """ Make the start subgroup as visited """
+        visited_subgroups.append(self.start_subgroup)
         # clusters_visited.append(self.start_cluster)
         profit = 0
         tour = []
         distance = 0
-        """ For each set chose a cluster and try to find a plausible path """
+        """ For each cluster chose a subgroup with best profit and try to find a plausible path """
         early_stop = self.max_initial_solution_attempts
         while any(index_clusters) and early_stop > 0:
+            """ Chose the cluster randomly """
             c = np.random.choice(index_clusters)
             max_subgroup_profit_idx = np.argmax(self.clusters[c].index_profit)
 
-            choose_subgroup = self.clusters[c].subgroups[max_subgroup_profit_idx]  # Chose the cluster from set with the highest profit
+            """ Chose the subgroup with best profit in the cluster """
+            choose_subgroup = self.clusters[c].subgroups[max_subgroup_profit_idx]
 
-            if self.clusters[c].can_be_inserted:  # if this cluster can be inserted
-                cv0.append(choose_subgroup)
+            """ If cluster is already visited to initial solution it can't be visited again """
+            if self.clusters[c].can_be_inserted:
+                p0.append(choose_subgroup)
 
-                initial_tour, initial_distance = self.tour_generation(cv0)
+                initial_tour, initial_distance = self.tour_generation(p0, improvement_threshold=self.settings["improvement threshold"]) #Generate a route between vertices
 
                 """ test if the solution is plausible """
                 if initial_distance > self.cops.t_max:
                     early_stop -= 1
-                    cv0.pop(-1)
+                    p0.pop(-1)
                     try:
                         index_clusters.remove(c)
                     except ValueError:
@@ -803,46 +867,51 @@ class TabuSearchCOPS(COPS):
                     distance = initial_distance
                     profit += self.array_profit[choose_subgroup]
                     # clusters_visited.append(a)
-                    for visited in self.clusters[c].subgroups:  # list of sets who this cluster belongs it
+                    for visited in self.clusters[c].subgroups:
                         try:
                             index_clusters.remove(visited)
-                            sets_visited.append(visited)
-                            for c in self.subgroups[visited].clusters_subgroup:
-                                self.clusters[c].can_be_inserted = False  # can't be visited
                         except ValueError:
                             pass
-                    my_print(f"clusters in solution {cv0} ")
+                    visited = self.clusters[c].subgroups[max_subgroup_profit_idx]
+                    visited_subgroups.append(visited)
+                    """ Set all clusters with this subgroup as visited """
+                    for c in self.subgroups[visited].clusters_subgroup:
+                        self.clusters[c].can_be_inserted = False
+
+
+                    my_print(f"clusters in solution {p0} ")
                 # my_print("-------------")
 
         """ For non_circular_path add the final cluster and set in their respective array """
         if not self.cops.circular_path:
-            sets_visited.append(self.end_subgroup)
+            visited_subgroups.append(self.end_subgroup)
             # clusters_visited.append(self.end_cluster)
 
         self.solution["route"] = tour
-        self.solution["subgroups_visited"] = cv0
+        self.solution["subgroups_visited"] = p0
         # self.solution["subgroups_visited"].sort()
-        # self.solution["sets_visited"] = sets_visited
+        # self.solution["visited_subgroups"] = visited_subgroups
         self.solution["distance"] = distance
         self.solution["profit"] = profit
 
-        for i in cv0:
-            #self.array_clusters[i][2] = 1  # update LONG_TERM_MEMORY
-            self.clusters[i].long_term_memory = 1
-            #for v in self.array_clusters[i][0]:
-            for v in self.clusters[i].vertices_of_cluster:
+        for i in p0:
+            for c in self.subgroups[i].clusters_subgroup:
+                self.clusters[c].long_term_memory = 1
+            for v in self.subgroups[i].vertices_subgroup:
                 self.vertices[v].visited = True  # indicates if a vertex is being visited
         self.vertices[self.clusters[self.end_cluster].vertices_of_cluster[0]].visited = True  # all end and start cluster have only one vertex
         self.vertices[self.clusters[self.start_cluster].vertices_of_cluster[0]].visited = True
-        self.visited_subgroups[[i for i in sets_visited]] = 1
+        self.visited_subgroups[[i for i in visited_subgroups]] = 1
 
         """ update Aspiration level """
-        for c in self.solution["subgroups_visited"]:
-            if profit > self.clusters[c].index_profit:
-                self.clusters[c].index_profit = profit
+        for s in self.solution["subgroups_visited"]:
+            for c in self.subgroups[s].clusters_subgroup:
+                profit_index = self.clusters[c].subgroups.index(s)
+                if profit > self.clusters[c].index_profit[profit_index]:
+                    self.clusters[c].index_profit[profit_index] = profit
 
         my_print(f"LONG_TERM_MEMORY {[c.long_term_memory for c in self.clusters]}")
-        my_print(f"sets_visited {self.visited_subgroups}")
+        my_print(f"visited_subgroups {self.visited_subgroups}")
         my_print(f"vertex_visited {[i.visited for i in self.vertices]}")
 
         execution_time = time.time() - t1
@@ -933,18 +1002,22 @@ class TabuSearchCOPS(COPS):
     #     print("Runtime Init Solution: {} seconds".format(tempoExec))
 
     def tour_generation(self,cluster_tg: List[int], improvement_threshold=0.001):
-        """ tour is generated with 2-opt technic """
-
+        """
+        A tour is generated with 2-opt technic
+        :param cluster_tg: Subgroups list .The vertex in this list will be optimized.
+        :param improvement_threshold: Minimum improvement to consider a solution to 2-opt stable. This value can be configured in config.yaml
+        :return: edges: The indexes of the vertex
+        :return: d: Total distance
+        """
         cv0 = cluster_tg.copy()
 
-        """ Note: the 2-opt solver needs a different treatment for a path that 
-                        ends at the same vertex it started """
+        """ Note: the 2-opt solver needs a different treatment for a path that ends at the same vertex it started """
         if not self.cops.circular_path:
             cv0.append(self.end_cluster)
 
         """ select only wanted vertex """
         #selected_index = [v for i in cv0 for v in self.array_clusters[i][0]]
-        selected_index = list(OrderedDict.fromkeys([v for i in cv0 for v in self.clusters[i].subgroups]))  # will eliminate repeated elements
+        selected_index = list(OrderedDict.fromkeys(cv0))  # will eliminate repeated elements
         # selected_vertex = np.array([vertices_tg[i].position for i in subgroup_tg[g].vertices_subgroup for g in selected_index])
         selected_vertex_l = []
         index_vertices = []
@@ -999,6 +1072,11 @@ class TabuSearchCOPS(COPS):
     #     return edges, d
 
     def choose_best_solution(self):
+        """
+        Verify if the current solution is better or worse than the best solution. If the solution profit is bigger than profit of best solution make it best solution.
+        If it is equal, verify if the distance is smaller if it is set the solution as best solution.
+        :return:
+        """
         if self.solution["profit"] > self.best_solution["profit"] or \
                 (self.solution["profit"] == self.best_solution["profit"] and
                  self.solution["distance"] < self.best_solution["distance"]):
@@ -1011,6 +1089,10 @@ class TabuSearchCOPS(COPS):
             self.iterations_to_change_final_set += 1
 
     def change_end_cluster(self):
+        """
+        Change the cluster that ends the path
+        :return:
+        """
         #my_print(f"-----------CHANGE THE END POINT {self.end_cluster}", index_print=2)
 
         # index of the min long-term-memory for the end clusters

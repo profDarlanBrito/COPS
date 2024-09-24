@@ -2,7 +2,7 @@ NAME: 11berlin52_T100_p1
 TYPE: TSP
 COMMENT: 52 locations in Berlin (Groetschel)  GTSP::[From Fischetti,Salazar,Toth. A branch-and-cut algorithm for the symmetric generalized traveling salesman problem (1997).]
 DIMENSION: 52
-TMAX: 2232
+TMAX: 1500
 START_CLUSTER: 0
 END_CLUSTER: 0
 CLUSTERS: 12
@@ -76,7 +76,7 @@ GTSP_SUBGROUP_SECTION: subgroup_id subgroup_profit id-vertex-list
 11 4 11 25 26 27
 GTSP_CLUSTER_SECTION: cluster_id id-subgroup-list
 0 0
-1 1
+1 1 11
 2 2
 3 3
 4 4
@@ -86,4 +86,3 @@ GTSP_CLUSTER_SECTION: cluster_id id-subgroup-list
 8 8
 9 9
 10 10
-11 11

@@ -1,0 +1,22 @@
+#File used to configure some parameters of the method
+
+#Define the number for iterations of the method without an improvement on the profit value
+max iteration without improvements: 300
+
+#Define the maximum number of iterations even if the maximum of iteration without an improvement be reached.
+absolute max iterations: 200
+
+#The Minimum number of visits to the neighbor might be removed from long-term memory
+tabu alfa: 4
+
+#The number of visits to a node be considered tabu
+beta: 2
+
+#Prematurely interrupt to the search for an initial solution
+max initial solution attempts: 10
+
+#Parameter only for file verification
+is_ok: 1
+
+#Minimum improvement to consider a solution to 2-opt stable.
+improvement threshold: 0.001
