@@ -1106,7 +1106,7 @@ class TabuSearchCOPS(COPS):
         a = np.argmin([self.clusters[c].long_term_memory for c in self.subgroups[self.end_subgroup].clusters_subgroup])
 
         # old end cluster long-term-memory update
-        self.clusters[self.end_cluster].long_term_memory = 0  # long term memory (=0 removed from solution)
+        self.clusters[self.end_cluster].long_term_memory = 0  # long-term memory (=0 removed from solution)
         self.vertices[self.clusters[self.end_cluster].vertices_of_cluster[0]].visited = False  # vertex removed from solution
 
         # new end cluster will be the oldest it was in solution
