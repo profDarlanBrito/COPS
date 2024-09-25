@@ -38,7 +38,7 @@ def spreadsheet_header(results_file):
 
 
 def main(dir, problem, results_file, save_img):
-    f = open(results_file, "a")
+
     """ Read the dataset """
     dataset = fr"{dir}/{problem}.cops"
     cops = COPS()
@@ -63,19 +63,19 @@ def main(dir, problem, results_file, save_img):
         os.makedirs(img_path)
     img_saved = fr"{img_path}/{problem}"
     #cops.draw(path=solution["route"], legend=legend, fill_cluster=True, fill_set=True, name=img_saved, save_img=save_img)
-
-    f.write(
-        f"\n{problem};"
-        f"{len(cops.list_vertex) - 1};"
-        f"{cops.n_subgroups - 1};"
-        f"{len(cops.list_clusters) - 1};"
-        f"{str(round(tempoExec, 3)).replace('.', ',')};"
-        f"{str(solution['profit']).replace('.', ',')};"
-        f"{str(round(solution['distance'], 2)).replace('.', ',')};"
-        f"{str(solution['route']).replace(',', ' ')};"
-        f"{str(solution['subgroups_visited']).replace(',', ' ')};"
-        f"COPS-TABU")
-    f.close()
+    
+    with open(results_file, "a") as f
+        f.write(
+            f"\n{problem};"
+            f"{len(cops.list_vertex) - 1};"
+            f"{cops.n_subgroups - 1};"
+            f"{len(cops.list_clusters) - 1};"
+            f"{str(round(tempoExec, 3)).replace('.', ',')};"
+            f"{str(solution['profit']).replace('.', ',')};"
+            f"{str(round(solution['distance'], 2)).replace('.', ',')};"
+            f"{str(solution['route']).replace(',', ' ')};"
+            f"{str(solution['subgroups_visited']).replace(',', ' ')};"
+            f"COPS-TABU")
 
 
 if __name__ == '__main__':
