@@ -81,7 +81,7 @@ def main(dir, problem, results_file, save_img):
 if __name__ == '__main__':
     # standart problem
     dir = fr"{os.getcwd()}/datasets"
-    problem = "example_3D"
+    problem = "3dreconstruction"
 
     # Getting parsed problem
     args = receive_data()

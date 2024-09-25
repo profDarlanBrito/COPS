@@ -770,12 +770,12 @@ class TabuSearchCOPS(COPS):
 
     def main(self):
         """ Compute an initial solution p0 """
-        my_print("------ Initial Solution ---------------")
+        print("------ Initial Solution ---------------")
         self.initial_solution( )
-        my_print(f"solution {self.solution}")
+        print(f"solution {self.solution}")
         self.choose_best_solution()
 
-        # my_print("------ Generated Neighborhoods ---------------")
+        print("------ Generating Neighborhoods ---------------")
         cont = 0
         while self.iterations_without_improvement < self.max_iterations_without_improvement and cont < self.absolute_max_iterations:
             self.generate_neighborhood()
@@ -783,7 +783,7 @@ class TabuSearchCOPS(COPS):
             if not self.cops.circular_path:
                 if self.iterations_to_change_final_set > self.max_iterations_without_improvement:
                     self.change_end_cluster()
-
+        print(' ------- Neighbors generated -------- ')
         """ add start end end to solution clusters_visited"""
         self.best_solution["subgroups_visited"].insert(0, self.start_cluster)
         # self.best_solution["subgroups_visited"].append([c for c in self.array_sets[self.end_cluster] if self.array_clusters[c][2] > 0][0])
@@ -1009,6 +1009,8 @@ class TabuSearchCOPS(COPS):
         :return: edges: The indexes of the vertex
         :return: d: Total distance
         """
+        print(' ****** Starting tour generation ******* ')
+        t_tg1 = time.time()
         cv0 = cluster_tg.copy()
 
         """ Note: the 2-opt solver needs a different treatment for a path that ends at the same vertex it started """
@@ -1037,7 +1039,9 @@ class TabuSearchCOPS(COPS):
         distance = path_distance_for_circular(route, selected_vertex)  # only for conference
         """ calculate the path distance from edge distances matrix """
         d = sum([self.matrix_dist[edge[0]][edge[1]] for edge in edges])
-
+        print('======= Ending tour generation ======== ')
+        total_time = time.time() - t_tg1
+        print(f'Total time tour generation: {total_time}')
         return edges, d
 
 
