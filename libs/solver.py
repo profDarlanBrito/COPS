@@ -183,6 +183,7 @@ class TabuSearchCOPS(COPS):
 
         """ Note that: It's possible that end set contain more than one cluster who finishes the path,
                                 but each end cluster must contain only one cluster."""
+
         self.end_subgroup = np.random.choice(self.clusters[self.end_cluster].subgroups)
         best_end_subgroup = copy.deepcopy(self.end_subgroup)
         self.start_subgroup = self.clusters[self.start_cluster].subgroups[0]
@@ -194,6 +195,7 @@ class TabuSearchCOPS(COPS):
             the clusters who belongs to any set except the start and end sets """
         # all_clusters contain all clusters except the clusters who belong only to the initial or final sets.
         # Note: the cluster who belong to initial or final sets could belong to another set
+
         # (in this case this cluster will be in the all_clusters variable)
 
         # all_clusters = [self.clusters[c] for c in range(num_clusters) if c != start_cluster and c != end_cluster]
@@ -839,6 +841,7 @@ class TabuSearchCOPS(COPS):
         distance = 0
         """ For each cluster chose a subgroup with best profit and try to find a plausible path """
         early_stop = self.max_initial_solution_attempts
+        
         while any(index_clusters) and early_stop > 0:
             """ Chose the cluster randomly """
             c = np.random.choice(index_clusters)
