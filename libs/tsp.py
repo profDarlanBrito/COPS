@@ -12,7 +12,7 @@ two_opt_swap = lambda r, i, k: np.concatenate((r[0:i],r[k:-len(r)+i-1:-1],r[k+1:
 
 
 def two_opt(cities, improvement_threshold, is_a_circular_path=True):  # 2-opt Algorithm adapted from https://en.wikipedia.org/wiki/2-opt
-    print('mmmmmmmmmmmm Starting two-pt algorithm mmmmmmm')
+    # print('mmmmmmmmmmmm Starting two-pt algorithm mmmmmmm')
     t_topt = time.time()
     route = np.arange(cities.shape[0])  # Make an array of row numbers corresponding to cities.
     improvement_factor = 1  # Initialize the improvement factor.
@@ -38,6 +38,6 @@ def two_opt(cities, improvement_threshold, is_a_circular_path=True):  # 2-opt Al
         else:
             improvement_factor = 1 - best_distance / distance_to_beat  # Calculate how much the route has improved.
             #print("improvement_factor", improvement_factor)
-    print('kkkkkkkkkk  Ending two-opt kkkkkkkkkk')
-    print(f'Total 2-opt time: {time.time()-t_topt}')
+    # print('kkkkkkkkkk  Ending two-opt kkkkkkkkkk')
+    # print(f'Total 2-opt time: {time.time()-t_topt}')
     return route  # When the route is no longer improving substantially, stop searching and return the route.
