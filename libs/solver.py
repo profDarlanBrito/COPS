@@ -3,8 +3,6 @@ from typing import List
 import numpy as np
 import copy
 
-from anaconda_navigator.api.external_apps.validation_utils import catch_exception
-
 from config import parse_settings_file
 from libs.tsp import two_opt, path_distance_for_circular
 from libs.grafo import COPS

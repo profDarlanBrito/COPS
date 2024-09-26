@@ -64,7 +64,7 @@ def main(dir, problem, results_file, save_img):
     img_saved = fr"{img_path}/{problem}"
     #cops.draw(path=solution["route"], legend=legend, fill_cluster=True, fill_set=True, name=img_saved, save_img=save_img)
     
-    with open(results_file, "a") as f
+    with open(results_file, "a") as f:
         f.write(
             f"\n{problem};"
             f"{len(cops.list_vertex) - 1};"
