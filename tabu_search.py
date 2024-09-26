@@ -50,7 +50,7 @@ def main(dir, problem, results_file, save_img):
     solution = tbs.main()
 
     tempoExec = time.time() - t1
-    print("Runtime: {} seconds".format(tempoExec))
+    # print("Runtime: {} seconds".format(tempoExec))
     print(f"Runtime: {time.strftime('%H:%M:%S', time.gmtime(tempoExec))}")
 
     print("------ Final Solution -------")
