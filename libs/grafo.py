@@ -280,6 +280,9 @@ class COPS:
         Clusters = 0
         n_clusters = 0
         for line in Lines:
+            if line.strip() == '':
+                continue
+
             values = [f for f in line.split()]
             if values[0] == 'DIMENSION:':
                 self.dimension = int(values[1])

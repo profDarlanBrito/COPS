@@ -1,4 +1,5 @@
 """ Traveling salesman problem with 2-opt """
+import time
 
 # tsp.py
 import numpy as np
@@ -11,14 +12,16 @@ two_opt_swap = lambda r, i, k: np.concatenate((r[0:i],r[k:-len(r)+i-1:-1],r[k+1:
 
 
 def two_opt(cities, improvement_threshold, is_a_circular_path=True):  # 2-opt Algorithm adapted from https://en.wikipedia.org/wiki/2-opt
+    # print('mmmmmmmmmmmm Starting two-pt algorithm mmmmmmm')
+    t_topt = time.time()
     route = np.arange(cities.shape[0])  # Make an array of row numbers corresponding to cities.
     improvement_factor = 1  # Initialize the improvement factor.
 
     if is_a_circular_path:
-        aux = 0  # first point will be the start and the end
+        aux = 0  # The first point will be the start and the end
         path_distance = path_distance_for_circular
     else:
-        aux = 1  # first point will be the start and the last point is the end
+        aux = 1  #The first point will be the start and the last point is the end
         path_distance = path_distance_non_circular
     best_distance = path_distance(route, cities)  # Calculate the distance of the initial path.
     while improvement_factor > improvement_threshold:  # If the route is still improving, keep going!
@@ -35,4 +38,6 @@ def two_opt(cities, improvement_threshold, is_a_circular_path=True):  # 2-opt Al
         else:
             improvement_factor = 1 - best_distance / distance_to_beat  # Calculate how much the route has improved.
             #print("improvement_factor", improvement_factor)
+    # print('kkkkkkkkkk  Ending two-opt kkkkkkkkkk')
+    # print(f'Total 2-opt time: {time.time()-t_topt}')
     return route  # When the route is no longer improving substantially, stop searching and return the route.
