@@ -95,8 +95,7 @@ if __name__ == '__main__':
         save_img = False
 
     # result file
-    if not os.path.exists(results_path):
-        os.makedirs(results_path)
+    os.makedirs(results_path, exist_ok=True)
     results_file = fr"{results_path}/{problem}.csv"
 
     # write spreadsheet header
